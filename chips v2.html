@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planilha de Chips</title>
+</head>
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,200..800;1,200..800&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
+
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Open Sans', sans-serif;
+        background: linear-gradient(155deg, #18181d, rgb(105, 107, 255));
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+    }
+
+    .container {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.37);
+        width: 100%;
+        max-width: 900px;
+        margin: auto 0;
+        box-sizing: border-box;
+    }
+
+    h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    .form-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        justify-content: center;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+
+    .form-container input,
+    .form-container select,
+    .form-container button {
+        padding: 12px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+        margin: 10px;
+    }
+
+    .form-container button {
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .form-container button:hover {
+        background-color: #0056b3;
+        transform: scale(0.96);
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    table th,
+    table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+        font-size: 14px;
+    }
+
+    table th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+        color: #555;
+    }
+
+    table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    /* Estilo para os botões de ação */
+    .edit-btn {
+        background-color: #28a745;
+        color: #fff;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        margin-right: 5px;
+    }
+
+    .edit-btn:hover { background-color: #218838; }
+    .delete-btn { background-color: #dc3545; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease; }
+    .delete-btn:hover { background-color: #c82333; }
+</style>
+
+<body>
+
+    <div class="container">
+        <h1>Planilha de Chips</h1>
+
+        <!-- Form com id=form -->
+        <form id="form" class="form-container" onsubmit="event.preventDefault(); adicionarOuSalvar();">
+            <input type="text" id="equipe" placeholder="Equipe">
+            <input type="text" id="coordenador" placeholder="Coordenador">
+            <input type="text" id="numero" placeholder="Número">
+            <input type="date" id="data">
+            <select id="status">
+                <option value="">Status de uso</option>
+                <option value="Em uso">Em uso</option>
+                <option value="Não em uso">Não em uso</option>
+            </select>
+
+           
+            <button id="save-ls" type="button" onclick="salvarNoLocalStorage()">Salvar no LocalStorage</button>
+            <button id="export-xlsx" type="button" onclick="exportarParaXLSX()">Exportar para XLSX</button>
+            <button id="clear-ls" type="button" onclick="limparLocalStorage()">Limpar LocalStorage</button>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Equipe</th>
+                    <th>Coordenador</th>
+                    <th>Número</th>
+                    <th>Data da última recarga</th>
+                    <th>Status de Uso</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-corpo"></tbody>
+        </table>
+    </div>
+
+    <!-- SheetJS CDN para exportar xlsx -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', carregarDados);
+
+        let editingIndex = null;
+        const tabelaCorpo = document.getElementById('tabela-corpo');
+
+        // ---------- Helpers de cookie ----------
+        function setCookie(name, value, days) {
+            let expires = '';
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = '; expires=' + date.toUTCString();
+            }
+            document.cookie = name + '=' + value + expires + '; path=/';
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + '=';
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        function eraseCookie(name) {
+            document.cookie = name + '=; Max-Age=-99999999; path=/';
+        }
+
+        function readItemsFromCookie() {
+            const cookie = getCookie('planilhaItens');
+            if (!cookie) return [];
+            try { return JSON.parse(decodeURIComponent(cookie)); } catch (e) { console.error('Erro ao parsear cookie:', e); return []; }
+        }
+
+        function saveItemsToCookie(items) {
+            try { const str = encodeURIComponent(JSON.stringify(items)); setCookie('planilhaItens', str, 365); } catch (e) { alert('Erro ao salvar nos cookies: ' + e.message); }
+        }
+
+        // ---------- Helpers de localStorage ----------
+        const LS_KEY = 'planilhaItensLS';
+        function readItemsFromLocalStorage() {
+            try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { console.error('Erro LS parse:', e); return []; }
+        }
+        function saveItemsToLocalStorage(items) { localStorage.setItem(LS_KEY, JSON.stringify(items)); }
+
+        // ---------- Lógica: preferir localStorage se existir, senão cookie ----------
+        function readCurrentItems() {
+            const ls = readItemsFromLocalStorage();
+            if (ls && ls.length > 0) return { source: 'ls', items: ls };
+            return { source: 'cookie', items: readItemsFromCookie() };
+        }
+
+        // ---------- Form / CRUD usando cookies (mantidos) ----------
+        function getFormData() {
+            const inputs = ['equipe', 'coordenador', 'numero', 'data', 'status'];
+            const dados = {};
+            for (const id of inputs) dados[id] = document.getElementById(id).value;
+            return dados;
+        }
+
+        function adicionarOuSalvar() {
+            // Continua gravando nos cookies como antes
+            const dados = getFormData();
+            if (Object.values(dados).some(value => !value)) { alert('Por favor, preencha todos os campos!'); return; }
+            let listaItens = readItemsFromCookie();
+            if (editingIndex !== null) { listaItens[editingIndex] = dados; editingIndex = null; document.getElementById('main-button').innerText = 'Adicionar Item'; }
+            else listaItens.push(dados);
+            saveItemsToCookie(listaItens);
+            carregarDados();
+            limparCampos();
+        }
+
+        function adicionarLinhaNaTabela(item, index) {
+            const dataFormatada = item.data ? item.data.split('-').reverse().slice(0, 3).join('/') : '';
+            const novaLinha = tabelaCorpo.insertRow();
+            novaLinha.setAttribute('data-index', index);
+            novaLinha.innerHTML = `
+                <td>${item.equipe}</td>
+                <td>${item.coordenador}</td>
+                <td>${item.numero}</td>
+                <td>${dataFormatada}</td>
+                <td>${item.status}</td>
+                <td>
+                    <button class="edit-btn" onclick="editarItem(${index})">Editar</button>
+                    <button class="delete-btn" onclick="removerItem(${index})">Remover</button>
+                </td>
+            `;
+        }
+
+        function carregarDados() {
+            // lê dados preferindo localStorage (se houver), senão cookies
+            const { source, items } = readCurrentItems();
+            tabelaCorpo.innerHTML = '';
+            items.forEach(adicionarLinhaNaTabela);
+            // mostra de onde veio (opcional, console)
+            console.log('Tabela atualizada. Fonte:', source, 'Linhas:', items.length);
+        }
+
+        function removerItem(index) {
+            const { source, items } = readCurrentItems();
+            if (!confirm('Tem certeza que deseja remover este item?')) return;
+            items.splice(index, 1);
+            if (source === 'ls') saveItemsToLocalStorage(items); else saveItemsToCookie(items);
+            carregarDados();
+        }
+
+        function editarItem(index) {
+            const { items } = readCurrentItems();
+            const item = items[index];
+            document.getElementById('equipe').value = item.equipe;
+            document.getElementById('coordenador').value = item.coordenador;
+            document.getElementById('numero').value = item.numero;
+            document.getElementById('data').value = item.data;
+            document.getElementById('status').value = item.status;
+            editingIndex = index;
+            document.getElementById('main-button').innerText = 'Salvar Alterações';
+        }
+
+        function limparCampos() { document.getElementById('form').reset(); document.getElementById('status').value = ''; }
+
+        function limparCookies() { if (confirm('Deseja realmente limpar todos os dados salvos nos cookies?')) { eraseCookie('planilhaItens'); carregarDados(); alert('Cookies limpos.'); } }
+        function limparLocalStorage() { if (confirm('Deseja realmente limpar LocalStorage (planilha)?')) { localStorage.removeItem(LS_KEY); carregarDados(); alert('LocalStorage limpo.'); } }
+
+        // ---------- Salvar no LocalStorage (botão pedido) ----------
+        // adiciona o registro atual no LS e atualiza a tabela imediatamente
+        function salvarNoLocalStorage() {
+            const dados = getFormData();
+            if (Object.values(dados).some(value => !value)) { alert('Por favor, preencha todos os campos!'); return; }
+            const lista = readItemsFromLocalStorage();
+            if (editingIndex !== null) {
+                lista[editingIndex] = dados;
+                editingIndex = null;
+                document.getElementById('main-button').innerText = 'Adicionar Item';
+            } else {
+                lista.push(dados);
+            }
+            saveItemsToLocalStorage(lista);
+            // atualização imediata da tabela — requisito do usuário
+            carregarDados();
+            limparCampos();
+            alert('Salvo no LocalStorage com sucesso.');
+        }
+
+        // ---------- Exportar para XLSX (SheetJS) ----------
+        function exportarParaXLSX() {
+            const { items } = readCurrentItems();
+            if (!items || items.length === 0) { alert('Não há itens para exportar.'); return; }
+            const dadosParaPlanilha = items.map(item => ({ Equipe: item.equipe, Coordenador: item.coordenador, Numero: item.numero, Data: item.data, Status: item.status }));
+            const ws = XLSX.utils.json_to_sheet(dadosParaPlanilha);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'PlanilhaChips');
+            XLSX.writeFile(wb, 'planilha_chips.xlsx');
+        }
+
+    </script>
+</body>
+
+</html>
