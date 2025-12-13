@@ -76,6 +76,12 @@
         transform: scale(0.96);
     }
 
+    .form-container button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+        transform: none;
+    }
+
     table {
         width: 100%;
         border-collapse: collapse;
@@ -100,7 +106,6 @@
         background-color: #f9f9f9;
     }
 
-    /* Estilo para os botões de ação */
     .edit-btn {
         background-color: #28a745;
         color: #fff;
@@ -115,30 +120,54 @@
     .edit-btn:hover { background-color: #218838; }
     .delete-btn { background-color: #dc3545; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease; }
     .delete-btn:hover { background-color: #c82333; }
+
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+    }
+
+    .error {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+
+    .success {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        text-align: center;
+    }
 </style>
 
 <body>
-
     <div class="container">
         <h1>Planilha de Chips</h1>
 
-        <!-- Form com id=form -->
-        <form id="form" class="form-container" onsubmit="event.preventDefault(); adicionarOuSalvar();">
-            <input type="text" id="equipe" placeholder="Equipe">
-            <input type="text" id="coordenador" placeholder="Coordenador">
-            <input type="text" id="numero" placeholder="Número">
-            <input type="date" id="data">
-            <select id="status">
+        <div id="message-area"></div>
+
+        <form id="form" class="form-container" onsubmit="event.preventDefault(); salvarItem();">
+            <input type="text" id="equipe" placeholder="Equipe" required>
+            <input type="text" id="coordenador" placeholder="Coordenador" required>
+            <input type="text" id="numero" placeholder="Número" required>
+            <input type="date" id="data" required>
+            <select id="status" required>
                 <option value="">Status de uso</option>
                 <option value="Em uso">Em uso</option>
                 <option value="Não em uso">Não em uso</option>
             </select>
 
-           
-            <button id="save-ls" type="button" onclick="salvarNoLocalStorage()">Salvar no LocalStorage</button>
+            <button id="main-button" type="submit">Adicionar Item</button>
             <button id="export-xlsx" type="button" onclick="exportarParaXLSX()">Exportar para XLSX</button>
-            <button id="clear-ls" type="button" onclick="limparLocalStorage()">Limpar LocalStorage</button>
         </form>
+
+        <div id="loading" class="loading" style="display: none;">Carregando...</div>
 
         <table>
             <thead>
@@ -155,89 +184,51 @@
         </table>
     </div>
 
-    <!-- SheetJS CDN para exportar xlsx -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <script>
+        const API_URL = '/api/chips';
+        let editingId = null;
+        const tabelaCorpo = document.getElementById('tabela-corpo');
+        const messageArea = document.getElementById('message-area');
+        const loadingDiv = document.getElementById('loading');
+
         document.addEventListener('DOMContentLoaded', carregarDados);
 
-        let editingIndex = null;
-        const tabelaCorpo = document.getElementById('tabela-corpo');
+        function showMessage(message, type = 'success') {
+            messageArea.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messageArea.innerHTML = '';
+            }, 3000);
+        }
 
-        // ---------- Helpers de cookie ----------
-        function setCookie(name, value, days) {
-            let expires = '';
-            if (days) {
-                const date = new Date();
-                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-                expires = '; expires=' + date.toUTCString();
+        function showLoading(show) {
+            loadingDiv.style.display = show ? 'block' : 'none';
+        }
+
+        async function carregarDados() {
+            try {
+                showLoading(true);
+                const response = await fetch(API_URL);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Erro ao carregar dados');
+                }
+
+                tabelaCorpo.innerHTML = '';
+                result.data.forEach(item => adicionarLinhaNaTabela(item));
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+                showMessage('Erro ao carregar dados: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
             }
-            document.cookie = name + '=' + value + expires + '; path=/';
         }
 
-        function getCookie(name) {
-            const nameEQ = name + '=';
-            const ca = document.cookie.split(';');
-            for (let i = 0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
-            }
-            return null;
-        }
-
-        function eraseCookie(name) {
-            document.cookie = name + '=; Max-Age=-99999999; path=/';
-        }
-
-        function readItemsFromCookie() {
-            const cookie = getCookie('planilhaItens');
-            if (!cookie) return [];
-            try { return JSON.parse(decodeURIComponent(cookie)); } catch (e) { console.error('Erro ao parsear cookie:', e); return []; }
-        }
-
-        function saveItemsToCookie(items) {
-            try { const str = encodeURIComponent(JSON.stringify(items)); setCookie('planilhaItens', str, 365); } catch (e) { alert('Erro ao salvar nos cookies: ' + e.message); }
-        }
-
-        // ---------- Helpers de localStorage ----------
-        const LS_KEY = 'planilhaItensLS';
-        function readItemsFromLocalStorage() {
-            try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { console.error('Erro LS parse:', e); return []; }
-        }
-        function saveItemsToLocalStorage(items) { localStorage.setItem(LS_KEY, JSON.stringify(items)); }
-
-        // ---------- Lógica: preferir localStorage se existir, senão cookie ----------
-        function readCurrentItems() {
-            const ls = readItemsFromLocalStorage();
-            if (ls && ls.length > 0) return { source: 'ls', items: ls };
-            return { source: 'cookie', items: readItemsFromCookie() };
-        }
-
-        // ---------- Form / CRUD usando cookies (mantidos) ----------
-        function getFormData() {
-            const inputs = ['equipe', 'coordenador', 'numero', 'data', 'status'];
-            const dados = {};
-            for (const id of inputs) dados[id] = document.getElementById(id).value;
-            return dados;
-        }
-
-        function adicionarOuSalvar() {
-            // Continua gravando nos cookies como antes
-            const dados = getFormData();
-            if (Object.values(dados).some(value => !value)) { alert('Por favor, preencha todos os campos!'); return; }
-            let listaItens = readItemsFromCookie();
-            if (editingIndex !== null) { listaItens[editingIndex] = dados; editingIndex = null; document.getElementById('main-button').innerText = 'Adicionar Item'; }
-            else listaItens.push(dados);
-            saveItemsToCookie(listaItens);
-            carregarDados();
-            limparCampos();
-        }
-
-        function adicionarLinhaNaTabela(item, index) {
+        function adicionarLinhaNaTabela(item) {
             const dataFormatada = item.data ? item.data.split('-').reverse().slice(0, 3).join('/') : '';
             const novaLinha = tabelaCorpo.insertRow();
-            novaLinha.setAttribute('data-index', index);
             novaLinha.innerHTML = `
                 <td>${item.equipe}</td>
                 <td>${item.coordenador}</td>
@@ -245,77 +236,158 @@
                 <td>${dataFormatada}</td>
                 <td>${item.status}</td>
                 <td>
-                    <button class="edit-btn" onclick="editarItem(${index})">Editar</button>
-                    <button class="delete-btn" onclick="removerItem(${index})">Remover</button>
+                    <button class="edit-btn" onclick="editarItem('${item._id}')">Editar</button>
+                    <button class="delete-btn" onclick="removerItem('${item._id}')">Remover</button>
                 </td>
             `;
         }
 
-        function carregarDados() {
-            // lê dados preferindo localStorage (se houver), senão cookies
-            const { source, items } = readCurrentItems();
-            tabelaCorpo.innerHTML = '';
-            items.forEach(adicionarLinhaNaTabela);
-            // mostra de onde veio (opcional, console)
-            console.log('Tabela atualizada. Fonte:', source, 'Linhas:', items.length);
-        }
+        async function salvarItem() {
+            const dados = {
+                equipe: document.getElementById('equipe').value,
+                coordenador: document.getElementById('coordenador').value,
+                numero: document.getElementById('numero').value,
+                data: document.getElementById('data').value,
+                status: document.getElementById('status').value
+            };
 
-        function removerItem(index) {
-            const { source, items } = readCurrentItems();
-            if (!confirm('Tem certeza que deseja remover este item?')) return;
-            items.splice(index, 1);
-            if (source === 'ls') saveItemsToLocalStorage(items); else saveItemsToCookie(items);
-            carregarDados();
-        }
-
-        function editarItem(index) {
-            const { items } = readCurrentItems();
-            const item = items[index];
-            document.getElementById('equipe').value = item.equipe;
-            document.getElementById('coordenador').value = item.coordenador;
-            document.getElementById('numero').value = item.numero;
-            document.getElementById('data').value = item.data;
-            document.getElementById('status').value = item.status;
-            editingIndex = index;
-            document.getElementById('main-button').innerText = 'Salvar Alterações';
-        }
-
-        function limparCampos() { document.getElementById('form').reset(); document.getElementById('status').value = ''; }
-
-        function limparCookies() { if (confirm('Deseja realmente limpar todos os dados salvos nos cookies?')) { eraseCookie('planilhaItens'); carregarDados(); alert('Cookies limpos.'); } }
-        function limparLocalStorage() { if (confirm('Deseja realmente limpar LocalStorage (planilha)?')) { localStorage.removeItem(LS_KEY); carregarDados(); alert('LocalStorage limpo.'); } }
-
-        // ---------- Salvar no LocalStorage (botão pedido) ----------
-        // adiciona o registro atual no LS e atualiza a tabela imediatamente
-        function salvarNoLocalStorage() {
-            const dados = getFormData();
-            if (Object.values(dados).some(value => !value)) { alert('Por favor, preencha todos os campos!'); return; }
-            const lista = readItemsFromLocalStorage();
-            if (editingIndex !== null) {
-                lista[editingIndex] = dados;
-                editingIndex = null;
-                document.getElementById('main-button').innerText = 'Adicionar Item';
-            } else {
-                lista.push(dados);
+            if (Object.values(dados).some(value => !value)) {
+                showMessage('Por favor, preencha todos os campos!', 'error');
+                return;
             }
-            saveItemsToLocalStorage(lista);
-            // atualização imediata da tabela — requisito do usuário
-            carregarDados();
-            limparCampos();
-            alert('Salvo no LocalStorage com sucesso.');
+
+            try {
+                showLoading(true);
+                
+                if (editingId) {
+                    // Atualizar
+                    dados.id = editingId;
+                    const response = await fetch(API_URL, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(dados)
+                    });
+
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.error);
+
+                    showMessage('Item atualizado com sucesso!');
+                    editingId = null;
+                    document.getElementById('main-button').innerText = 'Adicionar Item';
+                } else {
+                    // Criar novo
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(dados)
+                    });
+
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.error);
+
+                    showMessage('Item adicionado com sucesso!');
+                }
+
+                limparCampos();
+                await carregarDados();
+            } catch (error) {
+                console.error('Erro ao salvar:', error);
+                showMessage('Erro ao salvar: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
 
-        // ---------- Exportar para XLSX (SheetJS) ----------
-        function exportarParaXLSX() {
-            const { items } = readCurrentItems();
-            if (!items || items.length === 0) { alert('Não há itens para exportar.'); return; }
-            const dadosParaPlanilha = items.map(item => ({ Equipe: item.equipe, Coordenador: item.coordenador, Numero: item.numero, Data: item.data, Status: item.status }));
-            const ws = XLSX.utils.json_to_sheet(dadosParaPlanilha);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'PlanilhaChips');
-            XLSX.writeFile(wb, 'planilha_chips.xlsx');
+        async function removerItem(id) {
+            if (!confirm('Tem certeza que deseja remover este item?')) return;
+
+            try {
+                showLoading(true);
+                const response = await fetch(`${API_URL}?id=${id}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error);
+
+                showMessage('Item removido com sucesso!');
+                await carregarDados();
+            } catch (error) {
+                console.error('Erro ao remover:', error);
+                showMessage('Erro ao remover: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
 
+        async function editarItem(id) {
+            try {
+                showLoading(true);
+                const response = await fetch(API_URL);
+                const result = await response.json();
+
+                if (!result.success) throw new Error(result.error);
+
+                const item = result.data.find(i => i._id === id);
+                if (!item) throw new Error('Item não encontrado');
+
+                document.getElementById('equipe').value = item.equipe;
+                document.getElementById('coordenador').value = item.coordenador;
+                document.getElementById('numero').value = item.numero;
+                document.getElementById('data').value = item.data;
+                document.getElementById('status').value = item.status;
+
+                editingId = id;
+                document.getElementById('main-button').innerText = 'Salvar Alterações';
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (error) {
+                console.error('Erro ao editar:', error);
+                showMessage('Erro ao carregar item: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function limparCampos() {
+            document.getElementById('form').reset();
+            document.getElementById('status').value = '';
+            editingId = null;
+            document.getElementById('main-button').innerText = 'Adicionar Item';
+        }
+
+        async function exportarParaXLSX() {
+            try {
+                showLoading(true);
+                const response = await fetch(API_URL);
+                const result = await response.json();
+
+                if (!result.success || !result.data || result.data.length === 0) {
+                    showMessage('Não há itens para exportar.', 'error');
+                    return;
+                }
+
+                const dadosParaPlanilha = result.data.map(item => ({
+                    Equipe: item.equipe,
+                    Coordenador: item.coordenador,
+                    Numero: item.numero,
+                    Data: item.data,
+                    Status: item.status
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(dadosParaPlanilha);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'PlanilhaChips');
+                XLSX.writeFile(wb, 'planilha_chips.xlsx');
+
+                showMessage('Arquivo exportado com sucesso!');
+            } catch (error) {
+                console.error('Erro ao exportar:', error);
+                showMessage('Erro ao exportar: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
     </script>
 </body>
 
