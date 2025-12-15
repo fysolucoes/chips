@@ -321,33 +321,38 @@
         }
 
         async function editarItem(id) {
-            try {
-                showLoading(true);
-                const response = await fetch(API_URL);
-                const result = await response.json();
+    try {
+        showLoading(true);
 
-                if (!result.success) throw new Error(result.error);
+        const response = await fetch(API_URL);
+        const result = await response.json();
 
-                const item = result.data.find(i => i._id === id);
-                if (!item) throw new Error('Item não encontrado');
+        if (!result.success) throw new Error(result.error);
 
-                document.getElementById('equipe').value = item.equipe;
-                document.getElementById('coordenador').value = item.coordenador;
-                document.getElementById('numero').value = item.numero;
-                document.getElementById('data').value = item.data;
-                document.getElementById('status').value = item.status;
+        const item = result.data.find(i => i._id === id);
+        if (!item) throw new Error('Item não encontrado');
 
-                editingId = id;
-                document.getElementById('main-button').innerText = 'Salvar Alterações';
+        document.getElementById('equipe').value = item.equipe;
+        document.getElementById('coordenador').value = item.coordenador;
+        document.getElementById('numero').value = item.numero;
+        document.getElementById('data').value = item.data;
+        document.getElementById('status').value = item.status;
 
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            } catch (error) {
-                console.error('Erro ao editar:', error);
-                showMessage('Erro ao carregar item: ' + error.message, 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
+        editingId = id;
+        document.getElementById('main-button').innerText = 'Salvar Alterações';
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+        showMessage(error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 🔥 ISSO RESOLVE O CLIQUE
+window.editarItem = editarItem;
+window.removerItem = removerItem;
+
 
         function limparCampos() {
             document.getElementById('form').reset();
