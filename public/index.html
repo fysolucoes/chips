@@ -329,11 +329,11 @@
         const response = await fetch(API_URL);
         const result = await response.json();
 
-        console.log('Dados vindos da API:', result.data);
+       
 
         const item = result.data.find(i => i._id === id);
 
-        console.log('Item encontrado:', item);
+       
 
         if (!item) {
             alert('ITEM NÃO ENCONTRADO');
