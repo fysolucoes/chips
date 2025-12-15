@@ -26,100 +26,143 @@ async function connectToDatabase() {
 }
 
 export default async function handler(req, res) {
-  // Habilitar CORS
+  // ===== CORS =====
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
   try {
     const { db } = await connectToDatabase();
     const collection = db.collection('chips');
 
-    // GET - Listar todos os chips
+    // ===== GET - Listar todos =====
     if (req.method === 'GET') {
-      const chips = await collection.find({}).toArray();
-      return res.status(200).json({ success: true, data: chips });
+      const chips = await collection.find({}).sort({ createdAt: -1 }).toArray();
+
+      const chipsFormatados = chips.map(item => ({
+        ...item,
+        _id: item._id.toString(), // 🔥 ESSENCIAL PARA O BOTÃO EDITAR
+      }));
+
+      return res.status(200).json({
+        success: true,
+        data: chipsFormatados,
+      });
     }
 
-    // POST - Criar novo chip
+    // ===== POST - Criar =====
     if (req.method === 'POST') {
       const { equipe, coordenador, numero, data, status } = req.body;
-      
+
       if (!equipe || !coordenador || !numero || !data || !status) {
-        return res.status(400).json({ success: false, error: 'Todos os campos são obrigatórios' });
+        return res.status(400).json({
+          success: false,
+          error: 'Todos os campos são obrigatórios',
+        });
       }
 
-      const result = await collection.insertOne({
+      const novoItem = {
         equipe,
         coordenador,
         numero,
         data,
         status,
-        createdAt: new Date()
-      });
+        createdAt: new Date(),
+      };
 
-      return res.status(201).json({ 
-        success: true, 
-        data: { _id: result.insertedId, equipe, coordenador, numero, data, status }
+      const result = await collection.insertOne(novoItem);
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          ...novoItem,
+          _id: result.insertedId.toString(),
+        },
       });
     }
 
-    // PUT - Atualizar chip
+    // ===== PUT - Atualizar =====
     if (req.method === 'PUT') {
       const { id, equipe, coordenador, numero, data, status } = req.body;
-      
+
       if (!id) {
-        return res.status(400).json({ success: false, error: 'ID é obrigatório' });
+        return res.status(400).json({
+          success: false,
+          error: 'ID é obrigatório',
+        });
       }
 
       const result = await collection.updateOne(
         { _id: new ObjectId(id) },
-        { 
-          $set: { 
-            equipe, 
-            coordenador, 
-            numero, 
-            data, 
+        {
+          $set: {
+            equipe,
+            coordenador,
+            numero,
+            data,
             status,
-            updatedAt: new Date()
-          } 
+            updatedAt: new Date(),
+          },
         }
       );
 
       if (result.matchedCount === 0) {
-        return res.status(404).json({ success: false, error: 'Item não encontrado' });
+        return res.status(404).json({
+          success: false,
+          error: 'Item não encontrado',
+        });
       }
 
-      return res.status(200).json({ success: true, data: { id, equipe, coordenador, numero, data, status } });
+      return res.status(200).json({
+        success: true,
+        message: 'Item atualizado com sucesso',
+      });
     }
 
-    // DELETE - Remover chip
+    // ===== DELETE - Remover =====
     if (req.method === 'DELETE') {
       const { id } = req.query;
-      
+
       if (!id) {
-        return res.status(400).json({ success: false, error: 'ID é obrigatório' });
+        return res.status(400).json({
+          success: false,
+          error: 'ID é obrigatório',
+        });
       }
 
-      const result = await collection.deleteOne({ _id: new ObjectId(id) });
+      const result = await collection.deleteOne({
+        _id: new ObjectId(id),
+      });
 
       if (result.deletedCount === 0) {
-        return res.status(404).json({ success: false, error: 'Item não encontrado' });
+        return res.status(404).json({
+          success: false,
+          error: 'Item não encontrado',
+        });
       }
 
-      return res.status(200).json({ success: true, message: 'Item removido com sucesso' });
+      return res.status(200).json({
+        success: true,
+        message: 'Item removido com sucesso',
+      });
     }
 
-    return res.status(405).json({ success: false, error: 'Método não permitido' });
+    // ===== Método inválido =====
+    return res.status(405).json({
+      success: false,
+      error: 'Método não permitido',
+    });
 
   } catch (error) {
     console.error('Erro na API:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 }
