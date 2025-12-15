@@ -320,17 +320,25 @@
             }
         }
 
-        async function editarItem(id) {
+       async function editarItem(id) {
+    console.log('ID clicado:', id);
+
     try {
         showLoading(true);
 
         const response = await fetch(API_URL);
         const result = await response.json();
 
-        if (!result.success) throw new Error(result.error);
+        console.log('Dados vindos da API:', result.data);
 
         const item = result.data.find(i => i._id === id);
-        if (!item) throw new Error('Item não encontrado');
+
+        console.log('Item encontrado:', item);
+
+        if (!item) {
+            alert('ITEM NÃO ENCONTRADO');
+            return;
+        }
 
         document.getElementById('equipe').value = item.equipe;
         document.getElementById('coordenador').value = item.coordenador;
@@ -341,17 +349,11 @@
         editingId = id;
         document.getElementById('main-button').innerText = 'Salvar Alterações';
 
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-        showMessage(error.message, 'error');
     } finally {
         showLoading(false);
     }
 }
-
-// 🔥 ISSO RESOLVE O CLIQUE
 window.editarItem = editarItem;
-window.removerItem = removerItem;
 
 
         function limparCampos() {
