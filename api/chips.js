@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
       const chipsFormatados = chips.map(item => ({
         ...item,
-        _id: item._id.toString(), // 🔥 ESSENCIAL PARA O BOTÃO EDITAR
+        _id: item._id.toString(), 
       }));
 
       return res.status(200).json({
@@ -97,6 +97,13 @@ export default async function handler(req, res) {
         });
       }
 
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          error: 'ID inválido',
+        });
+      }
+
       const result = await collection.updateOne(
         { _id: new ObjectId(id) },
         {
@@ -132,6 +139,13 @@ export default async function handler(req, res) {
         return res.status(400).json({
           success: false,
           error: 'ID é obrigatório',
+        });
+      }
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          error: 'ID inválido',
         });
       }
 
